@@ -1,8 +1,43 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Search, Plus, Edit2, Trash2, FileText, Archive, Clock, MapPin, Filter, Download, Eye, X, Printer, QrCode, FolderOpen, ChevronRight, ChevronDown, Tag, User, AlertCircle, Settings, FileDown, Folder, Files, Cloud, RefreshCw, Save, BookOpen, FileType } from 'lucide-react';
+import { Search, Plus, Edit2, Trash2, FileText, Archive, Clock, MapPin, Filter, Download, Eye, X, Printer, QrCode, FolderOpen, ChevronRight, ChevronDown, Tag, User, AlertCircle, Settings, FileDown, Folder, Files, Cloud, RefreshCw, Save, BookOpen, FileType, Columns, View, List, CheckCircle, RotateCcw } from 'lucide-react';
 
 // ⚠️ LINE 6: Yaha apna Google Apps Script URL paste karo
 const GOOGLE_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbx9Qvh31x2D24CVxYESOS6dXykLWw1tcHgyqH7sj8n4WrJMg6u6xr1ynRqqe1eJOyGO/exec';
+
+// --- Helper Components (Inhe aap alag files mein bhi rakh sakte hain) ---
+
+const Modal = ({ title, show, onClose, children, size = 'lg' }) => {
+  if (!show) return null;
+  const sizeClasses = { 'sm': 'max-w-md', 'lg': 'max-w-3xl', 'xl': 'max-w-5xl' }[size] || 'max-w-3xl';
+
+  return (
+    <div className="fixed inset-0 z-50 overflow-y-auto bg-gray-600 bg-opacity-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className={`bg-white rounded-xl shadow-2xl w-full ${sizeClasses} transform transition-all duration-300 scale-100 opacity-100`} onClick={e => e.stopPropagation()}>
+        <div className="flex justify-between items-center p-6 border-b border-gray-100">
+          <h3 className="text-xl font-semibold text-gray-800 flex items-center gap-2">{title}</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-50 transition"><X size={20} /></button>
+        </div>
+        <div className="p-6">
+          {children}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const StatCard = ({ icon: Icon, title, value, colorClass }) => (
+  <div className={`bg-white border-l-4 ${colorClass} rounded-lg shadow-md p-4 flex items-center justify-between transition duration-300 hover:shadow-lg transform hover:-translate-y-0.5`}>
+    <div>
+      <p className="text-sm font-medium text-gray-500">{title}</p>
+      <p className="text-2xl font-bold text-gray-900 mt-1">{value}</p>
+    </div>
+    <div className={`p-3 rounded-full ${colorClass.replace('border-', 'bg-').replace('-4', '-100')} text-opacity-80`}>
+      <Icon size={24} />
+    </div>
+  </div>
+);
+
+// --- Main Component ---
 
 const FileOrganizerSystem = () => {
   const [files, setFiles] = useState([]);
@@ -183,7 +218,7 @@ const FileOrganizerSystem = () => {
       const matchesPriority = filterPriority === 'All' || file.priority === filterPriority;
       return matchesSearch && matchesCategory && matchesStatus && matchesPriority;
     });
-  }, [files, searchTerm, filterCategory, filterStatus, filterPriority]);
+  }, [files, searchTerm, filterCategory, filterStatus, filterPriority, filterPriority]);
 
   const handleAddEdit = () => {
     if (!formData.fileNumber || !formData.fileName) {
@@ -240,7 +275,7 @@ const FileOrganizerSystem = () => {
   const openModal = (file = null) => {
     if (file) {
       setSelectedFile(file);
-      setFormData({ fileNumber: file.fileNumber, fileName: file.fileName, fileType: file.fileType, customFileType: '', category: file.category, almirah: file.almirah, rack: file.rack, row: file.row, column: file.column, pages: file.pages || 0, status: file.status, description: file.description, tags: file.tags || [], assignedTo: file.assignedTo || '', priority: file.priority || 'Medium', updateNote: '', newTag: '' });
+      setFormData({ fileNumber: file.fileNumber, fileName: file.fileName, fileType: file.fileType, customFileType: file.fileType === 'Others' ? file.fileType : '', category: file.category, almirah: file.almirah, rack: file.rack, row: file.row, column: file.column, pages: file.pages || 0, status: file.status, description: file.description, tags: file.tags || [], assignedTo: file.assignedTo || '', priority: file.priority || 'Medium', updateNote: '', newTag: '' });
     } else {
       setSelectedFile(null);
       const newFileNumber = generateFileNumber();
@@ -253,8 +288,8 @@ const FileOrganizerSystem = () => {
   const viewDetails = (file) => { setSelectedFile(file); setShowDetailModal(true); };
   
   const addTag = () => {
-    if (formData.newTag && !formData.tags.includes(formData.newTag)) {
-      setFormData({ ...formData, tags: [...formData.tags, formData.newTag], newTag: '' });
+    if (formData.newTag && !formData.tags.includes(formData.newTag.trim())) {
+      setFormData({ ...formData, tags: [...formData.tags, formData.newTag.trim()], newTag: '' });
     }
   };
   
@@ -288,6 +323,7 @@ const FileOrganizerSystem = () => {
       return f;
     });
     setFiles(updatedFiles);
+    setShowSubFileModal(false);
     setSubFileForm({ name: '', type: 'Brown File', customType: '', count: 1, pages: 0 });
     saveToDrive(true);
   };
@@ -319,12 +355,15 @@ const FileOrganizerSystem = () => {
     const updatedFiles = files.map(f => {
       if (f.id === selectedFile.id) {
         const newMovement = { date: getCurrentDateTime(), from: movementForm.fromLocation, to: movementForm.toLocation, movedBy: movementForm.movedBy, reason: movementForm.reason || 'Manual movement', type: 'Movement' };
+        
+        // Location update logic (Almirah-Rack-RowColumn)
         const locationParts = movementForm.toLocation.split('-');
-        const almirah = locationParts[0];
-        const rack = locationParts[1]?.replace('R', '') || '';
+        const almirah = locationParts[0] || f.almirah;
+        const rack = locationParts[1]?.replace('R', '') || f.rack;
         const rowCol = locationParts[2] || '';
-        const row = rowCol.charAt(0);
-        const column = rowCol.slice(1);
+        const row = rowCol.charAt(0) || f.row;
+        const column = rowCol.slice(1) || f.column;
+
         return { ...f, almirah, rack, row, column, status: 'In Transit', movements: [...(f.movements || []), newMovement], lastUpdated: getCurrentDateTime() };
       }
       return f;
@@ -347,10 +386,12 @@ const FileOrganizerSystem = () => {
   };
 
   const exportToCSV = () => {
-    const headers = ['File Number', 'File Name', 'File Type', 'Category', 'Location', 'Pages', 'Sub-Files', 'Status', 'Priority'];
-    const rows = files.map(f => [f.fileNumber, f.fileName, f.fileType, f.category, `${f.almirah}-R${f.rack}-${f.row}${f.column}`, f.pages || 0, f.subFiles?.length || 0, f.status, f.priority]);
+    const headers = ['File Number', 'File Name', 'File Type', 'Category', 'Location', 'Pages', 'Sub-Files', 'Status', 'Priority', 'Description', 'Tags', 'Assigned To', 'Last Updated', 'Created Date'];
+    const rows = files.map(f => [
+        f.fileNumber, f.fileName, f.fileType, f.category, `${f.almirah}-R${f.rack}-${f.row}${f.column}`, f.pages || 0, f.subFiles?.length || 0, f.status, f.priority, f.description, (f.tags || []).join('|'), f.assignedTo, f.lastUpdated, f.createdDate
+    ]);
     const csvContent = [headers, ...rows].map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
-    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -382,326 +423,698 @@ const FileOrganizerSystem = () => {
     return mainPages + subPages;
   };
 
+  // --- JSX Rendering Functions ---
+
+  const renderFilterControls = () => (
+    <div className="flex flex-wrap gap-4 items-center">
+      <Filter size={20} className="text-gray-500" />
+      
+      <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} className="p-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm">
+        <option value="All">All Categories</option>
+        {categories.map(c => <option key={c} value={c}>{c}</option>)}
+      </select>
+      
+      <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="p-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm">
+        <option value="All">All Statuses</option>
+        {statuses.map(s => <option key={s} value={s}>{s}</option>)}
+      </select>
+
+      <select value={filterPriority} onChange={(e) => setFilterPriority(e.target.value)} className="p-2 border border-gray-300 rounded-lg shadow-sm focus:ring-blue-500 focus:border-blue-500 text-sm">
+        <option value="All">All Priorities</option>
+        {priorities.map(p => <option key={p} value={p}>{p}</option>)}
+      </select>
+
+      <button onClick={() => { setFilterCategory('All'); setFilterStatus('All'); setFilterPriority('All'); }} className="text-gray-600 hover:text-gray-900 flex items-center gap-1 text-sm transition">
+        <RotateCcw size={16} /> Reset
+      </button>
+    </div>
+  );
+
+  const renderTableBody = () => (
+    <tbody className="bg-white divide-y divide-gray-100">
+      {filteredFiles.length === 0 ? (
+        <tr>
+          <td colSpan="9" className="px-6 py-4 text-center text-gray-500">
+            No files found matching your criteria.
+          </td>
+        </tr>
+      ) : (
+        filteredFiles.map((file) => (
+          <React.Fragment key={file.id}>
+            <tr className="hover:bg-gray-50 transition duration-150">
+              <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-blue-600 cursor-pointer" onClick={() => viewDetails(file)}>
+                <div className="flex items-center gap-2">
+                  <div className={`p-1 rounded-full ${getPriorityColor(file.priority)}`}>
+                    <Tag size={12} />
+                  </div>
+                  {file.fileNumber}
+                </div>
+              </td>
+              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{file.fileName}</td>
+              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getFileTypeColor(file.fileType)}`}>{file.fileType}</span>
+              </td>
+              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{file.category}</td>
+              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                <MapPin size={16} className="inline mr-1 text-red-500" />
+                {`${file.almirah}-R${file.rack}-${file.row}${file.column}`}
+              </td>
+              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{getTotalPages(file)}</td>
+              <td className="px-6 py-4 whitespace-nowrap">
+                <span className={`px-3 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${getStatusColor(file.status)}`}>{file.status}</span>
+              </td>
+              <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{file.lastUpdated.split(' ')[0]}</td>
+              <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium flex items-center space-x-2">
+                <button onClick={() => viewDetails(file)} className="text-blue-600 hover:text-blue-900 p-1"><Eye size={18} /></button>
+                <button onClick={() => openModal(file)} className="text-indigo-600 hover:text-indigo-900 p-1"><Edit2 size={18} /></button>
+                <button onClick={() => openSubFileModal(file)} className="text-green-600 hover:text-green-900 p-1"><Files size={18} /></button>
+                <button onClick={() => openMovementModal(file)} className="text-orange-600 hover:text-orange-900 p-1"><Clock size={18} /></button>
+                <button onClick={() => handleDelete(file.id)} className="text-red-600 hover:text-red-900 p-1"><Trash2 size={18} /></button>
+                <button onClick={() => toggleExpand(file.id)} className="text-gray-600 hover:text-gray-900 p-1">
+                  {expandedFiles[file.id] ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
+                </button>
+              </td>
+            </tr>
+            {expandedFiles[file.id] && file.subFiles?.length > 0 && (
+              <tr className="bg-gray-50">
+                <td colSpan="9" className="px-6 py-4">
+                  <div className="ml-8 border-l-2 border-dashed border-gray-300 pl-4">
+                    <h4 className="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1"><FolderOpen size={16} /> Sub-Files:</h4>
+                    {file.subFiles.map((subFile) => (
+                      <div key={subFile.id} className="flex justify-between items-center text-xs text-gray-600 py-1 border-b border-gray-100 last:border-b-0">
+                        <span className="flex items-center gap-1">
+                          <FileType size={14} className="text-blue-500" />
+                          {subFile.name} ({subFile.type})
+                        </span>
+                        <span className="text-gray-500">Count: {subFile.count} | Pages: {subFile.pages}</span>
+                        <button onClick={() => deleteSubFile(file.id, subFile.id)} className="text-red-400 hover:text-red-600 transition p-1"><X size={14} /></button>
+                      </div>
+                    ))}
+                  </div>
+                </td>
+              </tr>
+            )}
+          </React.Fragment>
+        ))
+      )}
+    </tbody>
+  );
+
+  const renderCardView = () => (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 pt-6">
+      {filteredFiles.length === 0 ? (
+        <div className="col-span-full text-center py-10 text-gray-500">No files found matching your criteria.</div>
+      ) : (
+        filteredFiles.map(file => (
+          <div key={file.id} className={`bg-white rounded-xl shadow-lg border-t-4 border-l-2 p-5 flex flex-col justify-between transition duration-300 hover:shadow-xl ${getPriorityColor(file.priority).replace('-100', '-300').replace('text-', 'border-')}`}>
+            
+            <div className="flex justify-between items-start mb-3">
+              <h3 className="text-lg font-bold text-gray-900 truncate" title={file.fileName}>{file.fileName}</h3>
+              <span className={`text-xs font-medium px-3 py-1 rounded-full ${getStatusColor(file.status)}`}>{file.status}</span>
+            </div>
+
+            <p className="text-sm text-blue-600 font-semibold mb-2 flex items-center gap-1">
+              <BookOpen size={16} /> {file.fileNumber}
+            </p>
+
+            <div className="space-y-1 text-sm text-gray-600 border-t pt-3 mt-3">
+              <div className="flex items-center justify-between">
+                <span className="font-medium flex items-center gap-1"><FileType size={16} /> Type:</span>
+                <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${getFileTypeColor(file.fileType)}`}>{file.fileType}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="font-medium flex items-center gap-1"><MapPin size={16} /> Location:</span>
+                <span className="text-gray-700 font-medium">{`${file.almirah}-R${file.rack}-${file.row}${file.column}`}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="font-medium flex items-center gap-1"><Folder size={16} /> Category:</span>
+                <span className="text-gray-700">{file.category}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="font-medium flex items-center gap-1"><Files size={16} /> Sub-Files:</span>
+                <span className="text-gray-700">{file.subFiles?.length || 0}</span>
+              </div>
+            </div>
+
+            <div className="flex justify-between items-center mt-4 pt-4 border-t">
+              <button onClick={() => viewDetails(file)} className="text-sm text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1">
+                <Eye size={16} /> Details
+              </button>
+              <div className="flex space-x-2">
+                <button onClick={() => openModal(file)} className="text-indigo-600 hover:text-indigo-800 p-1 rounded-full bg-indigo-50"><Edit2 size={16} /></button>
+                <button onClick={() => handleDelete(file.id)} className="text-red-600 hover:text-red-800 p-1 rounded-full bg-red-50"><Trash2 size={16} /></button>
+              </div>
+            </div>
+          </div>
+        ))
+      )}
+    </div>
+  );
+  
+  const renderAddEditModal = () => (
+    <Modal title={selectedFile ? 'Edit File Record' : 'Add New File'} show={showModal} onClose={closeModal} size="xl">
+      <form onSubmit={(e) => { e.preventDefault(); handleAddEdit(); }}>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          
+          {/* File Details */}
+          <div className="md:col-span-2 space-y-4 border-r pr-6">
+            <h4 className="font-semibold text-gray-700 border-b pb-2 flex items-center gap-2"><FileText size={20} className="text-blue-500" /> Basic Information</h4>
+            <div className="grid grid-cols-2 gap-4">
+                <label className="block">
+                  <span className="text-gray-700">File Number (Required)</span>
+                  <input type="text" required value={formData.fileNumber} onChange={(e) => setFormData({ ...formData, fileNumber: e.target.value })} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="e.g., FILE-2024-001" />
+                </label>
+                <label className="block">
+                  <span className="text-gray-700">File Name (Required)</span>
+                  <input type="text" required value={formData.fileName} onChange={(e) => setFormData({ ...formData, fileName: e.target.value })} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="e.g., Annual Budget 2024" />
+                </label>
+            </div>
+            
+            <label className="block">
+                <span className="text-gray-700">Description</span>
+                <textarea value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} rows="3" className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="Brief summary of the file content"></textarea>
+            </label>
+
+            <div className="grid grid-cols-3 gap-4">
+                <label className="block">
+                  <span className="text-gray-700">Category</span>
+                  <select value={formData.category} onChange={(e) => setFormData({ ...formData, category: e.target.value })} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                    <option value="">Select Category</option>
+                    {categories.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </label>
+                <label className="block">
+                    <span className="text-gray-700">Priority</span>
+                    <select value={formData.priority} onChange={(e) => setFormData({ ...formData, priority: e.target.value })} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                      {priorities.map(p => <option key={p} value={p}>{p}</option>)}
+                    </select>
+                </label>
+                <label className="block">
+                    <span className="text-gray-700">Status</span>
+                    <select value={formData.status} onChange={(e) => setFormData({ ...formData, status: e.target.value })} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                      {statuses.map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                </label>
+            </div>
+            
+            <h4 className="font-semibold text-gray-700 border-b pb-2 pt-4 flex items-center gap-2"><Files size={20} className="text-green-500" /> Type & Content</h4>
+            <div className="grid grid-cols-2 gap-4">
+                <label className="block">
+                  <span className="text-gray-700">File Type</span>
+                  <select value={formData.fileType} onChange={(e) => setFormData({ ...formData, fileType: e.target.value, customFileType: '' })} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                    {fileTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                  </select>
+                </label>
+                {formData.fileType === 'Others' && (
+                  <label className="block">
+                    <span className="text-gray-700">Custom Type</span>
+                    <input type="text" value={formData.customFileType} onChange={(e) => setFormData({ ...formData, customFileType: e.target.value })} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="e.g., Blue Folder" />
+                  </label>
+                )}
+                <label className="block">
+                    <span className="text-gray-700">Total Pages</span>
+                    <input type="number" min="0" value={formData.pages} onChange={(e) => setFormData({ ...formData, pages: parseInt(e.target.value) || 0 })} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" />
+                </label>
+            </div>
+            
+            {selectedFile && (
+              <label className="block">
+                <span className="text-gray-700">Update/Movement Note</span>
+                <input type="text" value={formData.updateNote} onChange={(e) => setFormData({ ...formData, updateNote: e.target.value })} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="Reason for change (e.g., Moved to storage)" />
+              </label>
+            )}
+          </div>
+          
+          {/* Location and Tags */}
+          <div className="space-y-4">
+            <h4 className="font-semibold text-gray-700 border-b pb-2 flex items-center gap-2"><MapPin size={20} className="text-red-500" /> Location Details</h4>
+            <div className="grid grid-cols-2 gap-4">
+                <label className="block">
+                  <span className="text-gray-700">Almirah/Section</span>
+                  <input type="text" value={formData.almirah} onChange={(e) => setFormData({ ...formData, almirah: e.target.value })} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="e.g., A1" />
+                </label>
+                <label className="block">
+                  <span className="text-gray-700">Rack/Drawer</span>
+                  <input type="text" value={formData.rack} onChange={(e) => setFormData({ ...formData, rack: e.target.value })} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="e.g., 2" />
+                </label>
+                <label className="block">
+                  <span className="text-gray-700">Row (A, B, C...)</span>
+                  <input type="text" maxLength="1" value={formData.row} onChange={(e) => setFormData({ ...formData, row: e.target.value.toUpperCase() })} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="e.g., B" />
+                </label>
+                <label className="block">
+                  <span className="text-gray-700">Column/Position</span>
+                  <input type="text" value={formData.column} onChange={(e) => setFormData({ ...formData, column: e.target.value })} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="e.g., 3" />
+                </label>
+            </div>
+            
+            <h4 className="font-semibold text-gray-700 border-b pb-2 pt-4 flex items-center gap-2"><Tag size={20} className="text-purple-500" /> Tags & Assignment</h4>
+            <label className="block">
+              <span className="text-gray-700">Assigned To (Responsible Person)</span>
+              <input type="text" value={formData.assignedTo} onChange={(e) => setFormData({ ...formData, assignedTo: e.target.value })} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="e.g., John Doe" />
+            </label>
+            
+            <label className="block">
+                <span className="text-gray-700">Tags</span>
+                <div className="flex mt-1">
+                    <input type="text" value={formData.newTag} onChange={(e) => setFormData({ ...formData, newTag: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && addTag()} className="block w-full rounded-l-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="Add a new tag" />
+                    <button type="button" onClick={addTag} className="px-4 py-2 bg-purple-600 text-white font-medium rounded-r-md hover:bg-purple-700 transition">Add</button>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                    {(formData.tags || []).map(tag => (
+                      <span key={tag} className="flex items-center bg-purple-100 text-purple-800 text-xs font-medium px-2.5 py-0.5 rounded-full">
+                        {tag}
+                        <button type="button" onClick={() => removeTag(tag)} className="ml-1 text-purple-600 hover:text-purple-900 transition"><X size={12} /></button>
+                      </span>
+                    ))}
+                </div>
+            </label>
+          </div>
+        </div>
+        
+        <div className="mt-6 pt-4 border-t flex justify-end space-x-3">
+          <button type="button" onClick={closeModal} className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition">Cancel</button>
+          <button type="submit" className="px-6 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition flex items-center gap-2">
+            <Save size={20} />
+            {selectedFile ? 'Save Changes' : 'Add File'}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+
+  const renderDetailModal = () => (
+    <Modal title={`Details: ${selectedFile?.fileName}`} show={showDetailModal} onClose={() => setShowDetailModal(false)} size="xl">
+      {selectedFile && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          
+          {/* Main Info Column */}
+          <div className="lg:col-span-2 space-y-4 pr-4 border-r">
+            
+            <div className="flex justify-between items-start border-b pb-3">
+              <h3 className="text-2xl font-bold text-gray-900">{selectedFile.fileName}</h3>
+              <div className="flex flex-col items-end">
+                <span className={`text-sm font-medium px-3 py-1 rounded-full ${getStatusColor(selectedFile.status)}`}>{selectedFile.status}</span>
+                <span className={`text-xs mt-1 font-medium px-2 py-0.5 rounded-full ${getPriorityColor(selectedFile.priority)}`}>{selectedFile.priority} Priority</span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 text-sm">
+                <p><span className="font-semibold text-gray-700">File Number:</span> <span className="text-blue-600 font-medium">{selectedFile.fileNumber}</span></p>
+                <p><span className="font-semibold text-gray-700">Category:</span> {selectedFile.category}</p>
+                <p><span className="font-semibold text-gray-700">File Type:</span> {selectedFile.fileType}</p>
+                <p><span className="font-semibold text-gray-700">Total Pages:</span> {getTotalPages(selectedFile)}</p>
+                <p><span className="font-semibold text-gray-700">Assigned To:</span> <span className="flex items-center gap-1"><User size={14} />{selectedFile.assignedTo || 'N/A'}</span></p>
+                <p><span className="font-semibold text-gray-700">Date Created:</span> {selectedFile.createdDate}</p>
+            </div>
+
+            <p className="mt-4"><span className="font-semibold text-gray-700">Description:</span> {selectedFile.description || 'No description provided.'}</p>
+            
+            <div className="mt-4">
+              <span className="font-semibold text-gray-700 flex items-center gap-1 mb-2"><Tag size={16} /> Tags:</span>
+              <div className="flex flex-wrap gap-2">
+                {(selectedFile.tags || []).map(tag => (
+                  <span key={tag} className="bg-purple-100 text-purple-800 text-xs font-medium px-3 py-1 rounded-full">{tag}</span>
+                ))}
+                {(selectedFile.tags?.length === 0 || !selectedFile.tags) && <span className="text-sm text-gray-500">No tags.</span>}
+              </div>
+            </div>
+
+            {/* Sub-Files Section */}
+            <div className="mt-6 pt-4 border-t">
+              <h4 className="text-lg font-semibold text-gray-700 flex items-center gap-2 mb-3"><FolderOpen size={20} className="text-green-500" /> Sub-Files ({selectedFile.subFiles?.length || 0})</h4>
+              <div className="max-h-40 overflow-y-auto space-y-2">
+                {(selectedFile.subFiles || []).length === 0 ? (
+                  <p className="text-sm text-gray-500">No sub-files added yet.</p>
+                ) : (
+                  (selectedFile.subFiles || []).map((sf) => (
+                    <div key={sf.id} className="flex justify-between items-center text-sm p-2 bg-gray-50 rounded-lg">
+                      <span className="font-medium text-gray-800">{sf.name}</span>
+                      <span className="text-gray-600">{sf.type} (x{sf.count})</span>
+                      <span className="text-gray-600">{sf.pages} Pages</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+          </div>
+
+          {/* Location & History Column */}
+          <div className="lg:col-span-1 space-y-4">
+            
+            <h4 className="text-lg font-semibold text-gray-700 flex items-center gap-2 border-b pb-2"><MapPin size={20} className="text-red-500" /> Current Location</h4>
+            <div className="bg-red-50 p-4 rounded-lg shadow-inner">
+              <p className="text-xl font-bold text-red-800">{`${selectedFile.almirah}-R${selectedFile.rack}-${selectedFile.row}${selectedFile.column}`}</p>
+              <p className="text-sm text-red-700 mt-1">Almirah: {selectedFile.almirah} | Rack: {selectedFile.rack} | Pos: {selectedFile.row}{selectedFile.column}</p>
+            </div>
+            <p className="text-xs text-gray-500">Last Updated: {selectedFile.lastUpdated}</p>
+
+            <h4 className="text-lg font-semibold text-gray-700 flex items-center gap-2 border-b pb-2 pt-4"><Clock size={20} className="text-amber-500" /> Movement History</h4>
+            <div className="max-h-60 overflow-y-auto space-y-3">
+                {(selectedFile.movements || []).slice().reverse().map((m, index) => (
+                    <div key={index} className="relative pl-5 before:content-[''] before:absolute before:left-0 before:top-0 before:h-full before:w-1 before:bg-gray-200">
+                        <span className="absolute left-[-5px] top-0 p-1 rounded-full bg-white border-2 border-amber-400 text-amber-500"><MapPin size={12} /></span>
+                        <p className="text-sm font-medium text-gray-800">Moved to {m.to}</p>
+                        <p className="text-xs text-gray-600">from {m.from} by {m.movedBy}</p>
+                        <p className="text-xs text-gray-500">{m.date}</p>
+                        <p className="text-xs italic text-gray-700 mt-0.5">Reason: {m.reason}</p>
+                    </div>
+                ))}
+                {(selectedFile.movements || []).length === 0 && <p className="text-sm text-gray-500">No movement history.</p>}
+            </div>
+
+            <h4 className="text-lg font-semibold text-gray-700 flex items-center gap-2 border-b pb-2 pt-4"><AlertCircle size={20} className="text-indigo-500" /> Updates/Notes</h4>
+            <div className="max-h-40 overflow-y-auto space-y-2 text-sm">
+                {(selectedFile.updates || []).slice().reverse().map((u, index) => (
+                    <div key={index} className="p-2 bg-indigo-50 rounded-lg">
+                        <p className="text-gray-800">{u.note}</p>
+                        <p className="text-xs text-gray-600 mt-0.5">by {u.user} on {u.date}</p>
+                    </div>
+                ))}
+                {(selectedFile.updates || []).length === 0 && <p className="text-sm text-gray-500">No updates/notes.</p>}
+            </div>
+            
+            <div className="mt-6 pt-4 border-t flex justify-end space-x-3">
+              <button onClick={() => generateQR(selectedFile)} className="px-4 py-2 bg-purple-600 text-white font-medium rounded-lg hover:bg-purple-700 transition flex items-center gap-2"><QrCode size={18} /> QR Code</button>
+              <button onClick={() => openModal(selectedFile)} className="px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition flex items-center gap-2"><Edit2 size={18} /> Edit Record</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+
+  const renderSubFileModal = () => (
+    <Modal title={`Add Sub-File to ${selectedFile?.fileNumber}`} show={showSubFileModal} onClose={() => setShowSubFileModal(false)} size="lg">
+      <form onSubmit={(e) => { e.preventDefault(); addSubFile(); }}>
+        <div className="space-y-4">
+          
+          <label className="block">
+            <span className="text-gray-700">Sub-File Name (Required)</span>
+            <input type="text" required value={subFileForm.name} onChange={(e) => setSubFileForm({ ...subFileForm, name: e.target.value })} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="e.g., Annual Performance Review" />
+          </label>
+          
+          <div className="grid grid-cols-3 gap-4">
+            <label className="block">
+              <span className="text-gray-700">Type</span>
+              <select value={subFileForm.type} onChange={(e) => setSubFileForm({ ...subFileForm, type: e.target.value, customType: '' })} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500">
+                {fileTypes.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </label>
+            {subFileForm.type === 'Others' && (
+              <label className="block">
+                <span className="text-gray-700">Custom Type</span>
+                <input type="text" value={subFileForm.customType} onChange={(e) => setSubFileForm({ ...subFileForm, customType: e.target.value })} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="e.g., Small Box" />
+              </label>
+            )}
+            <label className="block">
+              <span className="text-gray-700">Count</span>
+              <input type="number" min="1" value={subFileForm.count} onChange={(e) => setSubFileForm({ ...subFileForm, count: parseInt(e.target.value) || 1 })} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" />
+            </label>
+            <label className="block">
+              <span className="text-gray-700">Pages in Sub-File</span>
+              <input type="number" min="0" value={subFileForm.pages} onChange={(e) => setSubFileForm({ ...subFileForm, pages: parseInt(e.target.value) || 0 })} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" />
+            </label>
+          </div>
+
+        </div>
+        
+        <div className="mt-6 pt-4 border-t flex justify-end space-x-3">
+          <button type="button" onClick={() => setShowSubFileModal(false)} className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition">Cancel</button>
+          <button type="submit" className="px-6 py-2 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition flex items-center gap-2">
+            <Plus size={20} />
+            Add Sub-File
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+
+  const renderMovementModal = () => (
+    <Modal title={`Record Movement for ${selectedFile?.fileNumber}`} show={showMovementModal} onClose={() => setShowMovementModal(false)} size="lg">
+      <form onSubmit={(e) => { e.preventDefault(); addMovement(); }}>
+        <div className="space-y-4">
+          
+          <div className="grid grid-cols-2 gap-4">
+            <label className="block">
+              <span className="text-gray-700">From Location (Current)</span>
+              <input type="text" readOnly value={movementForm.fromLocation} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm bg-gray-50 cursor-not-allowed" />
+            </label>
+            <label className="block">
+              <span className="text-gray-700">To Location (Required) - Format: Almirah-Rack-RowCol</span>
+              <input type="text" required value={movementForm.toLocation} onChange={(e) => setMovementForm({ ...movementForm, toLocation: e.target.value })} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-orange-500 focus:ring-orange-500" placeholder="e.g., B2-R5-A10" />
+            </label>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <label className="block">
+              <span className="text-gray-700">Moved By (Required)</span>
+              <input type="text" required value={movementForm.movedBy} onChange={(e) => setMovementForm({ ...movementForm, movedBy: e.target.value })} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-orange-500 focus:ring-orange-500" placeholder="Name of person" />
+            </label>
+            <label className="block">
+              <span className="text-gray-700">Reason for Movement</span>
+              <input type="text" value={movementForm.reason} onChange={(e) => setMovementForm({ ...movementForm, reason: e.target.value })} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-orange-500 focus:ring-orange-500" placeholder="e.g., Sent for Audit" />
+            </label>
+          </div>
+          <p className="text-sm text-orange-600 flex items-center gap-1 mt-4"><AlertCircle size={16} /> Note: This action will set the file status to **'In Transit'**.</p>
+        </div>
+        
+        <div className="mt-6 pt-4 border-t flex justify-end space-x-3">
+          <button type="button" onClick={() => setShowMovementModal(false)} className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition">Cancel</button>
+          <button type="submit" className="px-6 py-2 bg-orange-600 text-white font-medium rounded-lg hover:bg-orange-700 transition flex items-center gap-2">
+            <Clock size={20} />
+            Record Movement
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+
+  const renderSettingsModal = () => (
+    <Modal title="System Settings" show={showSettingsModal} onClose={() => setShowSettingsModal(false)} size="md">
+      <h4 className="font-semibold text-gray-700 border-b pb-2 mb-4 flex items-center gap-2"><Columns size={20} className="text-indigo-500" /> Automatic File Numbering</h4>
+      <div className="space-y-4">
+        <label className="flex items-center space-x-3">
+          <input type="checkbox" checked={autoNumberSettings.enabled} onChange={(e) => setAutoNumberSettings({ ...autoNumberSettings, enabled: e.target.checked })} className="form-checkbox h-5 w-5 text-blue-600 rounded" />
+          <span className="text-gray-700 font-medium">Enable Auto Numbering</span>
+        </label>
+        
+        <div className="grid grid-cols-2 gap-4">
+          <label className="block">
+            <span className="text-gray-700">Prefix</span>
+            <input type="text" value={autoNumberSettings.prefix} onChange={(e) => setAutoNumberSettings({ ...autoNumberSettings, prefix: e.target.value.toUpperCase() })} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" placeholder="e.g., FILE" />
+          </label>
+          <label className="block">
+            <span className="text-gray-700">Counter Digits (e.g., 3 for 001)</span>
+            <input type="number" min="1" max="5" value={autoNumberSettings.counter} onChange={(e) => setAutoNumberSettings({ ...autoNumberSettings, counter: parseInt(e.target.value) || 3 })} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500" />
+          </label>
+        </div>
+
+        <label className="flex items-center space-x-3">
+          <input type="checkbox" checked={autoNumberSettings.year} onChange={(e) => setAutoNumberSettings({ ...autoNumberSettings, year: e.target.checked })} className="form-checkbox h-5 w-5 text-blue-600 rounded" />
+          <span className="text-gray-700 font-medium">Include Current Year (e.g., FILE-2024-001)</span>
+        </label>
+        
+        <p className="text-sm text-gray-500 pt-2">Example: **{autoNumberSettings.prefix}-{autoNumberSettings.year ? new Date().getFullYear() + '-' : ''}XXX**</p>
+      </div>
+      
+      <div className="mt-6 pt-4 border-t flex justify-end">
+        <button onClick={() => setShowSettingsModal(false)} className="px-6 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition flex items-center gap-2">
+          <CheckCircle size={20} /> Close & Save
+        </button>
+      </div>
+    </Modal>
+  );
+
+  const renderQRModal = () => (
+    <Modal title={`QR Code for ${selectedFile?.fileNumber}`} show={showQRModal} onClose={() => setShowQRModal(false)} size="sm">
+      <div className="flex flex-col items-center justify-center p-4">
+        {/* Placeholder for QR Code generation (In a real app, you'd use a library like 'qrcode.react') */}
+        <div className="w-48 h-48 bg-gray-200 flex items-center justify-center text-gray-500 rounded-lg border-4 border-dashed border-gray-300">
+          <QrCode size={40} />
+        </div>
+        <p className="mt-4 text-center text-lg font-medium text-gray-700">{selectedFile?.fileName}</p>
+        <p className="text-center text-sm text-blue-600">{selectedFile?.fileNumber}</p>
+
+        <div className="mt-6 flex space-x-3">
+          <button onClick={() => alert('Printing is not implemented yet.')} className="px-4 py-2 bg-gray-600 text-white font-medium rounded-lg hover:bg-gray-700 transition flex items-center gap-2"><Printer size={18} /> Print</button>
+          <button onClick={() => alert('Download is not implemented yet.')} className="px-4 py-2 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 transition flex items-center gap-2"><Download size={18} /> Download</button>
+        </div>
+        <p className="text-xs text-gray-500 mt-4 italic">The QR code would link to a public view or search for this file number.</p>
+      </div>
+    </Modal>
+  );
+
+  // --- Main Render ---
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50 flex items-center justify-center">
         <div className="text-center">
           <Cloud size={64} className="mx-auto text-blue-600 animate-bounce mb-4" />
-          <p className="text-xl font-semibold text-gray-700">Loading...</p>
+          <p className="text-xl font-semibold text-gray-700">Loading data from Google Drive...</p>
         </div>
       </div>
     );
   }
+  
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+      
+      {/* Header Section */}
       <div className="bg-white shadow-lg border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-6 py-6">
           <div className="flex items-center justify-between flex-wrap gap-4">
+            
+            {/* Title and Logo */}
             <div>
               <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
                 <div className="bg-gradient-to-br from-blue-600 to-indigo-600 p-3 rounded-xl shadow-lg">
                   <FileText className="text-white" size={32} />
                 </div>
-                Ultimate File Management System
+                Fileon - File Organizer
               </h1>
-              <p className="text-gray-600 mt-2 ml-14 flex items-center gap-2">
-                <Cloud size={16} />
-                Powered by Google Drive
-                {lastSyncTime && <span className="text-xs text-green-600">• Last sync: {lastSyncTime}</span>}
-              </p>
+              <p className="text-sm text-gray-500 mt-1 ml-12">Total Records: {files.length} | Last Sync: {lastSyncTime || 'N/A'} {syncing && <RefreshCw size={14} className="inline ml-2 animate-spin text-blue-500" />}</p>
             </div>
-            <div className="flex gap-3 flex-wrap">
-              <button onClick={() => loadFromDrive()} className="bg-blue-100 text-blue-700 px-4 py-3 rounded-xl flex items-center gap-2 hover:bg-blue-200 transition-all">
-                <RefreshCw size={20} />
+            
+            {/* Action Buttons */}
+            <div className="flex items-center gap-3 flex-wrap">
+              <button onClick={() => saveToDrive(false)} disabled={syncing} className="px-4 py-2 bg-indigo-600 text-white font-medium rounded-lg hover:bg-indigo-700 transition flex items-center gap-2 disabled:bg-indigo-400">
+                <Save size={20} />
+                {syncing ? 'Saving...' : 'Manual Save'}
               </button>
-              <button onClick={() => saveToDrive(false)} disabled={syncing} className="bg-green-100 text-green-700 px-4 py-3 rounded-xl flex items-center gap-2 hover:bg-green-200 transition-all disabled:opacity-50">
-                {syncing ? <RefreshCw size={20} className="animate-spin" /> : <Save size={20} />}
-              </button>
-              <button onClick={() => setShowSettingsModal(true)} className="bg-gray-100 text-gray-700 px-4 py-3 rounded-xl flex items-center gap-2 hover:bg-gray-200 transition-all">
-                <Settings size={20} />
-              </button>
-              <button onClick={() => openModal()} className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-6 py-3 rounded-xl flex items-center gap-2 hover:from-blue-700 hover:to-indigo-700 transition-all shadow-lg">
+              <button onClick={() => openModal()} className="px-4 py-2 bg-green-600 text-white font-medium rounded-lg hover:bg-green-700 transition flex items-center gap-2 shadow-md">
                 <Plus size={20} />
                 Add New File
+              </button>
+              <button onClick={() => setShowSettingsModal(true)} className="p-2.5 bg-gray-100 text-gray-600 rounded-lg hover:bg-gray-200 transition">
+                <Settings size={20} />
               </button>
             </div>
           </div>
         </div>
       </div>
 
+      {/* Main Content Area */}
       <div className="max-w-7xl mx-auto px-6 py-8">
-        <div className="text-center mb-8 p-6 bg-white rounded-2xl shadow-lg">
-          <h2 className="text-2xl font-bold text-gray-900 mb-4">🎉 File Management System Ready!</h2>
-          <p className="text-gray-700 mb-3">
-            {GOOGLE_APPS_SCRIPT_URL === 'YAHA_APNA_GOOGLE_APPS_SCRIPT_URL_PASTE_KARO' ? (
-              <span className="text-red-600 font-semibold">⚠️ Google Drive not configured. Showing demo data.</span>
-            ) : (
-              <span className="text-green-600 font-semibold">✅ Google Drive connected!</span>
-            )}
-          </p>
+        
+        {/* Stats Cards */}
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-5 mb-8">
+          <StatCard icon={Files} title="Total Files" value={stats.total} colorClass="border-blue-400 text-blue-600" />
+          <StatCard icon={CheckCircle} title="Active" value={stats.active} colorClass="border-green-400 text-green-600" />
+          <StatCard icon={Archive} title="Archived" value={stats.archived} colorClass="border-gray-400 text-gray-600" />
+          <StatCard icon={AlertCircle} title="Urgent" value={stats.urgent} colorClass="border-red-400 text-red-600" />
+          <StatCard icon={Folder} title="Categories" value={stats.categories} colorClass="border-yellow-400 text-yellow-600" />
+          <StatCard icon={Files} title="Sub-Files" value={stats.subFiles} colorClass="border-cyan-400 text-cyan-600" />
+          <StatCard icon={BookOpen} title="Registers" value={stats.registers} colorClass="border-emerald-400 text-emerald-600" />
+          <StatCard icon={FileText} title="Total Pages" value={stats.totalPages} colorClass="border-purple-400 text-purple-600" />
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4 mb-8">
-          <div className="bg-white rounded-2xl shadow-lg p-4 border">
-            <div className="text-center">
-              <div className="bg-blue-100 w-12 h-12 rounded-xl flex items-center justify-center mx-auto mb-2">
-                <FileText className="text-blue-600" size={24} />
-              </div>
-              <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
-              <p className="text-xs text-gray-600 font-medium">Total Files</p>
-            </div>
-          </div>
-          <div className="bg-white rounded-2xl shadow-lg p-4 border">
-            <div className="text-center">
-              <div className="bg-green-100 w-12 h-12 rounded-xl flex items-center justify-center mx-auto mb-2">
-                <FileText className="text-green-600" size={24} />
-              </div>
-              <p className="text-2xl font-bold text-green-600">{stats.active}</p>
-              <p className="text-xs text-gray-600 font-medium">Active</p>
-            </div>
-          </div>
-          <div className="bg-white rounded-2xl shadow-lg p-4 border">
-            <div className="text-center">
-              <div className="bg-gray-100 w-12 h-12 rounded-xl flex items-center justify-center mx-auto mb-2">
-                <Archive className="text-gray-600" size={24} />
-              </div>
-              <p className="text-2xl font-bold text-gray-600">{stats.archived}</p>
-              <p className="text-xs text-gray-600 font-medium">Archived</p>
-            </div>
-          </div>
-          <div className="bg-white rounded-2xl shadow-lg p-4 border">
-            <div className="text-center">
-              <div className="bg-indigo-100 w-12 h-12 rounded-xl flex items-center justify-center mx-auto mb-2">
-                <Filter className="text-indigo-600" size={24} />
-              </div>
-              <p className="text-2xl font-bold text-indigo-600">{stats.categories}</p>
-              <p className="text-xs text-gray-600 font-medium">Categories</p>
-            </div>
-          </div>
-          <div className="bg-white rounded-2xl shadow-lg p-4 border">
-            <div className="text-center">
-              <div className="bg-red-100 w-12 h-12 rounded-xl flex items-center justify-center mx-auto mb-2">
-                <AlertCircle className="text-red-600" size={24} />
-              </div>
-              <p className="text-2xl font-bold text-red-600">{stats.urgent}</p>
-              <p className="text-xs text-gray-600 font-medium">Urgent</p>
-            </div>
-          </div>
-          <div className="bg-white rounded-2xl shadow-lg p-4 border">
-            <div className="text-center">
-              <div className="bg-purple-100 w-12 h-12 rounded-xl flex items-center justify-center mx-auto mb-2">
-                <Folder className="text-purple-600" size={24} />
-              </div>
-              <p className="text-2xl font-bold text-purple-600">{stats.subFiles}</p>
-              <p className="text-xs text-gray-600 font-medium">Sub-Files</p>
-            </div>
-          </div>
-          <div className="bg-white rounded-2xl shadow-lg p-4 border">
-            <div className="text-center">
-              <div className="bg-emerald-100 w-12 h-12 rounded-xl flex items-center justify-center mx-auto mb-2">
-                <BookOpen className="text-emerald-600" size={24} />
-              </div>
-              <p className="text-2xl font-bold text-emerald-600">{stats.registers}</p>
-              <p className="text-xs text-gray-600 font-medium">Registers</p>
-            </div>
-          </div>
-          <div className="bg-white rounded-2xl shadow-lg p-4 border">
-            <div className="text-center">
-              <div className="bg-cyan-100 w-12 h-12 rounded-xl flex items-center justify-center mx-auto mb-2">
-                <FileType className="text-cyan-600" size={24} />
-              </div>
-              <p className="text-2xl font-bold text-cyan-600">{stats.totalPages}</p>
-              <p className="text-xs text-gray-600 font-medium">Total Pages</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="bg-white rounded-2xl shadow-lg p-6 mb-8">
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-4">
-            <div className="md:col-span-2 relative" ref={searchRef}>
-              <Search className="absolute left-4 top-3.5 text-gray-400" size={20} />
-              <input type="text" placeholder="Search files..." value={searchTerm} onChange={(e) => { setSearchTerm(e.target.value); setShowSuggestions(e.target.value.length >= 2); }} onFocus={() => searchTerm.length >= 2 && setShowSuggestions(true)} className="w-full pl-12 pr-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500" />
-              {showSuggestions && searchSuggestions.length > 0 && (
-                <div className="absolute z-50 w-full mt-2 bg-white border rounded-xl shadow-2xl max-h-80 overflow-y-auto">
-                  {searchSuggestions.map((suggestion, idx) => (
-                    <button key={idx} onClick={() => { setSearchTerm(suggestion); setShowSuggestions(false); }} className="w-full px-4 py-3 text-left hover:bg-blue-50 transition-colors border-b last:border-b-0 flex items-center gap-2">
-                      <Search size={16} className="text-gray-400" />
-                      <span className="text-gray-700">{suggestion}</span>
-                    </button>
+        {/* Search, Filter & View Controls */}
+        <div className="bg-white p-5 rounded-xl shadow-lg border border-gray-100 mb-6">
+          <div className="flex flex-col lg:flex-row justify-between items-center gap-4">
+            
+            {/* Search Bar */}
+            <div className="relative w-full lg:w-96" ref={searchRef}>
+              <input 
+                type="text" 
+                value={searchTerm} 
+                onChange={(e) => setSearchTerm(e.target.value)} 
+                onFocus={() => setShowSuggestions(true)}
+                className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-full shadow-sm focus:ring-blue-500 focus:border-blue-500" 
+                placeholder="Search by File Name, Number, Tag..."
+              />
+              <Search size={20} className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+              
+              {/* Search Suggestions */}
+              {searchTerm.length > 1 && showSuggestions && searchSuggestions.length > 0 && (
+                <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-xl max-h-60 overflow-y-auto">
+                  {searchSuggestions.map((suggestion) => (
+                    <div 
+                      key={suggestion} 
+                      className="px-4 py-2 cursor-pointer hover:bg-blue-50 text-gray-800 text-sm"
+                      onClick={() => { setSearchTerm(suggestion); setShowSuggestions(false); }}
+                    >
+                      {suggestion}
+                    </div>
                   ))}
                 </div>
               )}
             </div>
-            <select value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)} className="px-4 py-3 border rounded-xl">
-              <option value="All">All Categories</option>
-              {categories.map(cat => <option key={cat} value={cat}>{cat}</option>)}
-            </select>
-            <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="px-4 py-3 border rounded-xl">
-              <option value="All">All Status</option>
-              {statuses.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-            <select value={filterPriority} onChange={(e) => setFilterPriority(e.target.value)} className="px-4 py-3 border rounded-xl">
-              <option value="All">All Priority</option>
-              {priorities.map(p => <option key={p} value={p}>{p}</option>)}
-            </select>
+
+            {/* View Mode & Export */}
+            <div className="flex items-center gap-4">
+              <div className="flex bg-gray-100 rounded-lg p-1">
+                <button 
+                  onClick={() => setViewMode('table')} 
+                  className={`p-2 rounded-lg transition ${viewMode === 'table' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-600 hover:bg-gray-200'}`}
+                  title="Table View"
+                >
+                  <List size={20} />
+                </button>
+                <button 
+                  onClick={() => setViewMode('card')} 
+                  className={`p-2 rounded-lg transition ${viewMode === 'card' ? 'bg-white shadow-sm text-blue-600' : 'text-gray-600 hover:bg-gray-200'}`}
+                  title="Card View"
+                >
+                  <Columns size={20} />
+                </button>
+              </div>
+              
+              <div className="relative group">
+                <button className="px-4 py-2 bg-gray-200 text-gray-700 font-medium rounded-lg hover:bg-gray-300 transition flex items-center gap-2">
+                  <FileDown size={20} /> Export
+                </button>
+                <div className="absolute right-0 top-full mt-2 w-40 rounded-lg shadow-xl bg-white ring-1 ring-black ring-opacity-5 z-20 hidden group-hover:block">
+                  <button onClick={exportToCSV} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"><Download size={16} /> Export CSV</button>
+                  <button onClick={exportToJSON} className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"><Download size={16} /> Export JSON</button>
+                </div>
+              </div>
+            </div>
           </div>
-          <div className="flex justify-between items-center flex-wrap gap-3">
-            <div className="flex gap-2">
-              <button onClick={() => setViewMode('table')} className={`px-4 py-2 rounded-xl ${viewMode === 'table' ? 'bg-blue-600 text-white' : 'bg-gray-100'}`}>Table</button>
-              <button onClick={() => setViewMode('grid')} className={`px-4 py-2 rounded-xl ${viewMode === 'grid' ? 'bg-blue-600 text-white' : 'bg-gray-100'}`}>Grid</button>
-            </div>
-            <div className="flex gap-2">
-              <button onClick={exportToCSV} className="px-4 py-2 bg-green-100 text-green-700 rounded-xl hover:bg-green-200 text-sm"><FileDown size={16} className="inline mr-1" /> CSV</button>
-              <button onClick={exportToJSON} className="px-4 py-2 bg-blue-100 text-blue-700 rounded-xl hover:bg-blue-200 text-sm"><Download size={16} className="inline mr-1" /> JSON</button>
-              <button onClick={() => window.print()} className="px-4 py-2 bg-gray-100 rounded-xl hover:bg-gray-200 text-sm"><Printer size={16} className="inline mr-1" /> Print</button>
-            </div>
+          
+          {/* Filters */}
+          <div className="mt-4 pt-4 border-t border-gray-100">
+            {renderFilterControls()}
           </div>
         </div>
 
-        {viewMode === 'table' ? (
-          <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
-            <table className="w-full">
-              <thead className="bg-gradient-to-r from-gray-50 to-gray-100 border-b">
-                <tr>
-                  <th className="px-4 py-4 text-left text-xs font-semibold text-gray-700 uppercase">File Info</th>
-                  <th className="px-4 py-4 text-left text-xs font-semibold text-gray-700 uppercase">Type</th>
-                  <th className="px-4 py-4 text-left text-xs font-semibold text-gray-700 uppercase">Location</th>
-                  <th className="px-4 py-4 text-left text-xs font-semibold text-gray-700 uppercase">Pages</th>
-                  <th className="px-4 py-4 text-left text-xs font-semibold text-gray-700 uppercase">Status</th>
-                  <th className="px-4 py-4 text-left text-xs font-semibold text-gray-700 uppercase">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {filteredFiles.map((file) => (
-                  <React.Fragment key={file.id}>
-                    <tr className="hover:bg-blue-50">
-                      <td className="px-4 py-4">
-                        <div className="flex items-center gap-2">
-                          {file.subFiles?.length > 0 && (
-                            <button onClick={() => toggleExpand(file.id)} className="text-gray-400">
-                              {expandedFiles[file.id] ? <ChevronDown size={18} /> : <ChevronRight size={18} />}
-                            </button>
-                          )}
-                          <div>
-                            <div className="font-mono text-sm font-semibold">{file.fileNumber}</div>
-                            <div className="text-sm font-medium">{file.fileName}</div>
-                            <div className="text-xs text-gray-500 mt-1">{file.lastUpdated}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-4">
-                        <span className={`px-3 py-1 text-xs font-medium rounded-full border ${getFileTypeColor(file.fileType)}`}>{file.fileType}</span>
-                        <div className="text-xs text-gray-500 mt-1">{file.category}</div>
-                      </td>
-                      <td className="px-4 py-4">
-                        <div className="flex items-center gap-1 text-sm">
-                          <MapPin size={14} className="text-red-500" />
-                          <span className="font-semibold">{file.almirah}</span>-R{file.rack}-{file.row}{file.column}
-                        </div>
-                      </td>
-                      <td className="px-4 py-4">
-                        <div className="text-sm font-semibold">{getTotalPages(file)}</div>
-                        <div className="text-xs text-gray-500">Main: {file.pages || 0}</div>
-                      </td>
-                      <td className="px-4 py-4">
-                        <span className={`px-3 py-1 text-xs font-medium rounded-full border ${getStatusColor(file.status)}`}>{file.status}</span>
-                        <div className="mt-1"><span className={`px-2 py-0.5 text-xs font-bold rounded ${getPriorityColor(file.priority)}`}>{file.priority}</span></div>
-                      </td>
-                      <td className="px-4 py-4">
-                        <div className="flex gap-1 flex-wrap">
-                          <button onClick={() => viewDetails(file)} className="p-2 text-blue-600 hover:bg-blue-100 rounded-lg" title="View"><Eye size={16} /></button>
-                          <button onClick={() => openSubFileModal(file)} className="p-2 text-purple-600 hover:bg-purple-100 rounded-lg" title="Sub-Files"><FolderOpen size={16} /></button>
-                          <button onClick={() => openMovementModal(file)} className="p-2 text-orange-600 hover:bg-orange-100 rounded-lg" title="Move"><MapPin size={16} /></button>
-                          <button onClick={() => generateQR(file)} className="p-2 text-indigo-600 hover:bg-indigo-100 rounded-lg" title="QR"><QrCode size={16} /></button>
-                          <button onClick={() => openModal(file)} className="p-2 text-green-600 hover:bg-green-100 rounded-lg" title="Edit"><Edit2 size={16} /></button>
-                          <button onClick={() => handleDelete(file.id)} className="p-2 text-red-600 hover:bg-red-100 rounded-lg" title="Delete"><Trash2 size={16} /></button>
-                        </div>
-                      </td>
-                    </tr>
-                    {expandedFiles[file.id] && file.subFiles?.length > 0 && (
-                      <tr>
-                        <td colSpan="6" className="px-4 py-3 bg-gray-50">
-                          <div className="ml-8 space-y-2">
-                            <div className="font-semibold text-sm text-gray-700 mb-3 flex items-center gap-2">
-                              <Folder size={18} className="text-purple-600" />
-                              Sub-Files ({file.subFiles.length}):
-                            </div>
-                            {file.subFiles.map(sf => (
-                              <div key={sf.id} className="flex items-center justify-between bg-white p-4 rounded-lg border hover:shadow-md transition-shadow">
-                                <div className="flex items-center gap-4 flex-1">
-                                  <Files size={18} className="text-purple-600" />
-                                  <div className="flex-1">
-                                    <div className="flex items-center gap-2 mb-1">
-                                      <span className="font-medium">{sf.name}</span>
-                                      <span className={`px-2 py-0.5 text-xs font-medium rounded border ${getFileTypeColor(sf.type)}`}>{sf.type}</span>
-                                    </div>
-                                    <div className="text-xs text-gray-600 flex gap-4">
-                                      <span>Count: <strong>{sf.count}</strong></span>
-                                      <span>Pages: <strong>{sf.pages || 0}</strong></span>
-                                      <span>Updated: {sf.lastUpdated}</span>
-                                    </div>
-                                  </div>
-                                </div>
-                                <button onClick={() => deleteSubFile(file.id, sf.id)} className="p-2 text-red-600 hover:bg-red-100 rounded-lg ml-2"><Trash2 size={16} /></button>
-                              </div>
-                            ))}
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </React.Fragment>
-                ))}
-              </tbody>
-            </table>
-            {filteredFiles.length === 0 && (
-              <div className="text-center py-16">
-                <FileText className="mx-auto text-gray-300" size={64} />
-                <p className="text-gray-500 mt-4 text-lg">No files found</p>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredFiles.map(file => (
-              <div key={file.id} className="bg-white rounded-2xl shadow-lg p-6 border hover:shadow-2xl transition-all">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex-1">
-                    <div className="font-mono text-xs font-semibold text-gray-500">{file.fileNumber}</div>
-                    <h3 className="font-bold text-lg text-gray-900 mt-1">{file.fileName}</h3>
-                    <div className="flex items-center gap-2 mt-2">
-                      <span className={`px-2 py-1 text-xs font-medium rounded-full border ${getFileTypeColor(file.fileType)}`}>{file.fileType}</span>
-                      <span className={`px-2 py-1 text-xs font-bold rounded ${getPriorityColor(file.priority)}`}>{file.priority}</span>
-                    </div>
-                  </div>
-                </div>
-                <div className="space-y-3 mb-4">
-                  <div className="flex items-center gap-2 text-sm">
-                    <MapPin size={14} className="text-red-500" />
-                    <span className="font-semibold">{file.almirah}-R{file.rack}-{file.row}{file.column}</span>
-                  </div>
-                  <div className="flex items-center gap-4 text-sm">
-                    <div className="flex items-center gap-1">
-                      <FileType size={14} className="text-cyan-600" />
-                      <span><strong>{getTotalPages(file)}</strong> pages</span>
-                    </div>
-                    {file.subFiles?.length > 0 && (
-                      <div className="flex items-center gap-1 text-purple-600">
-                        <Folder size={14} />
-                        <span><strong>{file.subFiles.length}</strong> sub-files</span>
-                      </div>
-                    )}
-                  </div>
-                  <span className={`inline-block px-3 py-1 text-xs font-medium rounded-full border ${getStatusColor(file.status)}`}>{file.status}</span>
-                </div>
-                <div className="flex gap-2 pt-4 border-t">
-                  <button onClick={() => viewDetails(file)} className="flex-1 bg-blue-100 text-blue-700 py-2 rounded-lg hover:bg-blue-200 text-sm font-medium">View</button>
-                  <button onClick={() => openModal(file)} className="flex-1 bg-green-100 text-green-700 py-2 rounded-lg hover:bg-green-200 text-sm font-medium">Edit</button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+        {/* File List / Table */}
+        <div className="shadow-lg rounded-xl overflow-hidden ring-1 ring-black ring-opacity-5">
+          {viewMode === 'table' ? (
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">File Number</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">File Name</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Category</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Location</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Pages</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Updated</th>
+                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                  </tr>
+                </thead>
+                {renderTableBody()}
+              </table>
+            </div>
+          ) : (
+            renderCardView()
+          )}
+        </div>
+        
       </div>
+
+      {/* Modals */}
+      {renderAddEditModal()}
+      {renderDetailModal()}
+      {renderSubFileModal()}
+      {renderMovementModal()}
+      {renderSettingsModal()}
+      {renderQRModal()}
+
     </div>
   );
 };
